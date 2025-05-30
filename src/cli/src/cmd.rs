@@ -111,6 +111,9 @@ pub use upload::UploadCmd;
 pub mod workspace;
 pub use workspace::WorkspaceCmd;
 
+pub mod stash;
+pub use stash::StashCmd;
+
 #[async_trait]
 pub trait RunCmd {
     fn name(&self) -> &str;

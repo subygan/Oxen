@@ -124,6 +124,8 @@ pub const WORKSPACES_DIR: &str = "workspaces";
 pub const WORKSPACE_CONFIG: &str = "WORKSPACE_CONFIG";
 /// data.arrow
 pub const DATA_ARROW_FILE: &str = "data.arrow";
+/// stash directory
+pub const OXEN_STASH_DIR: &str = "stash";
 
 /// if we have merge conflicts we write to MERGE_HEAD and ORIG_HEAD to keep track of the parents
 pub const MERGE_HEAD_FILE: &str = "MERGE_HEAD";

@@ -64,6 +64,7 @@ pub enum OxenError {
     NothingToCommit(StringError),
     NoCommitsFound(StringError),
     HeadNotFound(StringError),
+    StashNotFound(StringError),
 
     // Workspaces
     WorkspaceNotFound(Box<StringError>),
@@ -298,6 +299,25 @@ impl OxenError {
     pub fn head_not_found() -> OxenError {
         OxenError::HeadNotFound(StringError::from(HEAD_NOT_FOUND))
     }
+
+    pub fn no_stashes_found() -> OxenError {
+        OxenError::StashNotFound(StringError::from("\n No stashes found.\n"))
+    }
+
+    pub fn must_be_on_branch_to_stash() -> OxenError {
+        OxenError::basic_str("Must be on a branch to stash")
+    }
+
+    pub fn stash_id_not_found(id: impl AsRef<str>) -> OxenError {
+        let err = format!("Stash id not found: {}", id.as_ref());
+        OxenError::basic_str(err)
+    }
+
+    pub fn corrupt_stash_commit(id: impl AsRef<str>, message: impl AsRef<str>) -> OxenError {
+        OxenError::basic_str(message)
+
+    }
+        
 
     pub fn home_dir_not_found() -> OxenError {
         OxenError::basic_str("Home directory not found")
