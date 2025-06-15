@@ -9,6 +9,8 @@ pub const OXEN_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// # Filenames and dirs
 /// .oxen is the name of the hidden directory where all our data lives
 pub const OXEN_HIDDEN_DIR: &str = ".oxen";
+/// Stash directory takes any stashed changes
+pub const STASH_DIR: &str = "stash";
 /// Folder name for oxen home within `.cache`, `.config`., etc.
 pub const OXEN: &str = "oxen";
 /// ~/.config/oxen holds config files
