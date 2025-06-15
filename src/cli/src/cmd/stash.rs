@@ -162,12 +162,18 @@ impl RunCmd for StashCmd {
                         let relative_path = stashed_file_path.strip_prefix(&latest_stash_path)
                             .map_err(|e| OxenError::basic_str(format!("Error stripping prefix: {}", e)))?;
                         let working_dir_dest_path = repo.path.join(relative_path);
+                        let metadata = fs::metadata(&stashed_file_path)?;
 
-                        if let Some(parent) = working_dir_dest_path.parent() {
-                            fs::create_dir_all(parent)?;
+                        if metadata.is_file() {
+                            if let Some(parent) = working_dir_dest_path.parent() {
+                                fs::create_dir_all(parent)?;
+                            }
+                            fs::copy(stashed_file_path, &working_dir_dest_path)?;
+                            println!("  Applied file: {}", relative_path.display());
+                        } else if metadata.is_dir() {
+                            fs::create_dir_all(&working_dir_dest_path)?;
+                            println!("  Created directory: {}", relative_path.display());
                         }
-                        fs::copy(stashed_file_path, &working_dir_dest_path)?;
-                        println!("  Applied: {}", relative_path.display());
                     }
 
                     // After successfully copying all files, remove the stash directory
@@ -208,12 +214,18 @@ impl RunCmd for StashCmd {
                         let relative_path = stashed_file_path.strip_prefix(&latest_stash_path)
                             .map_err(|e| OxenError::basic_str(format!("Error stripping prefix: {}", e)))?;
                         let working_dir_dest_path = repo.path.join(relative_path);
+                        let metadata = fs::metadata(&stashed_file_path)?;
 
-                        if let Some(parent) = working_dir_dest_path.parent() {
-                            fs::create_dir_all(parent)?;
+                        if metadata.is_file() {
+                            if let Some(parent) = working_dir_dest_path.parent() {
+                                fs::create_dir_all(parent)?;
+                            }
+                            fs::copy(stashed_file_path, &working_dir_dest_path)?;
+                            println!("  Applied file: {}", relative_path.display());
+                        } else if metadata.is_dir() {
+                            fs::create_dir_all(&working_dir_dest_path)?;
+                            println!("  Created directory: {}", relative_path.display());
                         }
-                        fs::copy(stashed_file_path, &working_dir_dest_path)?;
-                        println!("  Applied: {}", relative_path.display());
                     }
                     // DO NOT remove the stash directory for 'apply'
                     println!("\nApplied stash: {}", latest_stash_name);

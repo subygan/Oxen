@@ -132,4 +132,67 @@ describe "oxen stash" do
     output = run_oxen_cmd("stash list")
     expect(output).to include("No stashes available.")
   end
+
+  it "should stash and pop/apply empty directories and files in directories" do
+    empty_dir = "my_empty_dir"
+    dir_with_file = "dir_with_a_file"
+    file_in_dir = File.join(dir_with_file, "inner_file.txt")
+
+    # Create an empty directory
+    FileUtils.mkdir_p(empty_dir)
+    # Create a directory with a file
+    FileUtils.mkdir_p(dir_with_file)
+    File.write(file_in_dir, "content in a directory")
+
+    # Stash these changes
+    # Both new directories and the new file are not in HEAD.
+    # `stash push` should archive them and then they should not exist in WD.
+    output = run_oxen_cmd("stash push -m \"stash with dirs\"")
+    expect(output).to include("Created stash: stash_")
+
+    # Verify they are removed from working directory by the push logic for new items
+    expect(Dir.exist?(empty_dir)).to be_falsey
+    expect(Dir.exist?(dir_with_file)).to be_falsey
+    expect(File.exist?(file_in_dir)).to be_falsey
+
+    # Pop the stash
+    output = run_oxen_cmd("stash pop")
+    expect(output).to include("Popping stash: stash_")
+    expect(output).to include("stash with dirs")
+    expect(output).to include("Created directory: #{empty_dir}") # Check for empty dir creation
+    expect(output).to include("Applied file: #{file_in_dir}")  # Check for file in dir application
+
+    # Verify they are restored
+    expect(Dir.exist?(empty_dir)).to be_truthy
+    expect(Dir.exist?(dir_with_file)).to be_truthy
+    expect(File.exist?(file_in_dir)).to be_truthy
+    expect(File.read(file_in_dir)).to eq("content in a directory")
+
+    # Stash again to test 'apply'
+    FileUtils.rm_rf(empty_dir)
+    FileUtils.rm_rf(dir_with_file) # Clean up before next stash
+
+    FileUtils.mkdir_p(empty_dir)
+    FileUtils.mkdir_p(dir_with_file)
+    File.write(file_in_dir, "new apply content")
+    run_oxen_cmd("stash push -m \"apply stash with dirs\"")
+
+    expect(Dir.exist?(empty_dir)).to be_falsey
+    expect(Dir.exist?(dir_with_file)).to be_falsey
+
+    # Apply the stash
+    output = run_oxen_cmd("stash apply")
+    expect(output).to include("Applying stash: stash_")
+    expect(output).to include("apply stash with dirs")
+    expect(output).to include("Created directory: #{empty_dir}")
+    expect(output).to include("Applied file: #{file_in_dir}")
+
+    expect(Dir.exist?(empty_dir)).to be_truthy
+    expect(Dir.exist?(dir_with_file)).to be_truthy
+    expect(File.exist?(file_in_dir)).to be_truthy
+    expect(File.read(file_in_dir)).to eq("new apply content")
+
+    # Clean up by popping the applied stash
+    run_oxen_cmd("stash pop")
+  end
 end
