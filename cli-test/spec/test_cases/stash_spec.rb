@@ -195,4 +195,129 @@ describe "oxen stash" do
     # Clean up by popping the applied stash
     run_oxen_cmd("stash pop")
   end
+
+  describe "conflict handling" do
+    before do
+      # Ensure a clean slate for conflict tests if prior tests failed mid-pop
+      # This will remove all directories starting with 'stash_' in the .oxen/stash directory
+      base_stash_path = File.join(".oxen", "stash")
+      if Dir.exist?(base_stash_path)
+        Dir.foreach(base_stash_path) do |item|
+          next if item == '.' or item == '..'
+          if item.start_with?('stash_')
+            FileUtils.rm_rf(File.join(base_stash_path, item))
+          end
+        end
+      end
+
+      # Setup: file with initial content, committed
+      @conflict_file = "conflict_file.txt"
+      File.write(@conflict_file, "base content\nline2\nline3")
+      run_oxen_cmd("add #{@conflict_file}")
+      run_oxen_cmd("commit -m \"Base for conflict tests\"")
+    end
+
+    it "should detect conflict and not drop stash on pop" do
+      # 1. Modify and stash
+      File.write(@conflict_file, "stashed content\nline2\nNEW STASH LINE")
+      run_oxen_cmd("stash push -m \"stashed changes\"")
+      expect(File.read(@conflict_file)).to eq("base content\nline2\nline3") # Reverted
+
+      # 2. Modify locally again (different change)
+      File.write(@conflict_file, "local content\nNEW LOCAL LINE\nline3")
+
+      # 3. Pop and expect conflict
+      output = run_oxen_cmd("stash pop")
+      expect(output).to include("Stash operation completed with conflicts")
+      expect(output).to include(@conflict_file)
+      expect(output).to include("was not removed due to conflicts")
+
+      # Check file content remains local
+      expect(File.read(@conflict_file)).to eq("local content\nNEW LOCAL LINE\nline3")
+
+      # Check stash still exists
+      list_output = run_oxen_cmd("stash list")
+      expect(list_output).to include("stashed changes")
+
+      # Cleanup the remaining stash
+      run_oxen_cmd("stash drop") # Assuming stash drop 0 or similar, for now just pop again after resolving manually
+                                # For test purposes, we'll just clear it. If stash drop isn't implemented, this might need adjustment.
+                                # Current pop will conflict again. Let's reset content to base to allow pop for cleanup.
+      File.write(@conflict_file, "base content\nline2\nline3")
+      run_oxen_cmd("stash pop") # This should now succeed without conflict for cleanup
+    end
+
+    it "should keep local changes if stashed version is same as base" do
+      # 1. Stash (no actual change to @conflict_file, so stashed version is base)
+      # To ensure it's part of 'modified_files' for push, we need to touch it or make a dummy change then revert.
+      # Simpler: create another file to make the stash non-empty.
+      File.write("dummy.txt", "for_stash")
+      run_oxen_cmd("stash push -m \"stash without changes to conflict_file\"")
+      FileUtils.rm("dummy.txt") # Clean up dummy
+
+      # 2. Modify locally
+      File.write(@conflict_file, "local only change\nline2\nline3")
+
+      # 3. Pop: Should apply dummy.txt, keep local changes to @conflict_file
+      output = run_oxen_cmd("stash pop")
+      expect(output).not_to include("Conflict") # Or check for "Successfully popped"
+      expect(output).to include("Successfully popped stash")
+
+
+      expect(File.read(@conflict_file)).to eq("local only change\nline2\nline3")
+      expect(File.exist?("dummy.txt")).to be_truthy # From stash
+
+      # Stash should be gone
+      list_output = run_oxen_cmd("stash list")
+      expect(list_output).to include("No stashes available")
+    end
+
+    it "should apply stashed changes if local is same as base" do
+      # 1. Modify and stash
+      File.write(@conflict_file, "stashed version for apply\nline2\nline3")
+      run_oxen_cmd("stash push -m \"will apply this\"")
+      # @conflict_file is now reverted to "base content..."
+
+      # 2. Ensure local is same as base (it is after push)
+
+      # 3. Pop
+      output = run_oxen_cmd("stash pop")
+      expect(output).not_to include("Conflict")
+      expect(output).to include("Successfully popped stash")
+
+      expect(File.read(@conflict_file)).to eq("stashed version for apply\nline2\nline3")
+      list_output = run_oxen_cmd("stash list")
+      expect(list_output).to include("No stashes available")
+    end
+
+    it "should conflict if new file in stash and new file locally with same name" do
+      new_filename = "brand_new_file.txt"
+
+      # 1. Create and stash a new file
+      File.write(new_filename, "content from stash")
+      run_oxen_cmd("stash push -m \"new file stashed\"")
+      expect(File.exist?(new_filename)).to be_falsey # Removed by push
+
+      # 2. Create a local file with the same name but different content
+      File.write(new_filename, "content from local")
+
+      # 3. Pop and expect conflict
+      output = run_oxen_cmd("stash pop")
+      expect(output).to include("Stash operation completed with conflicts")
+      expect(output).to include(new_filename)
+      expect(output).to include("File #{new_filename} created locally and in stash")
+      expect(output).to include("was not removed due to conflicts")
+
+      # Local file should remain untouched
+      expect(File.read(new_filename)).to eq("content from local")
+
+      # Stash should still exist
+      list_output = run_oxen_cmd("stash list")
+      expect(list_output).to include("new file stashed")
+
+      # Cleanup: remove local, then pop the stash
+      FileUtils.rm(new_filename)
+      run_oxen_cmd("stash pop")
+    end
+  end
 end

@@ -78,6 +78,9 @@ impl RunCmd for StashCmd {
                     fs::write(message_file_path, msg_content)?;
                 }
 
+                let head_commit_file_path = stash_instance_dir.join("head_commit.txt");
+                fs::write(head_commit_file_path, head_commit.id.clone())?;
+
                 println!("Stashing modified files...");
                 for path in status.modified_files.iter() {
                     let source_path = repo.path.join(path);
@@ -157,28 +160,88 @@ impl RunCmd for StashCmd {
                         }
                     }
 
+                    let mut conflicted_files: Vec<std::path::PathBuf> = Vec::new();
+                    let base_commit_id = fs::read_to_string(latest_stash_path.join("head_commit.txt"))
+                        .map_err(|e| OxenError::basic_str(format!("Failed to read base_commit_id for stash: {}", e)))?
+                        .trim().to_string();
+
                     let stashed_files = util::fs::rlist_paths_in_dir(&latest_stash_path);
                     for stashed_file_path in stashed_files.iter() {
+                        // Skip meta files like head_commit.txt and message.txt
+                        if stashed_file_path.file_name().map_or(false, |name| name == "head_commit.txt" || name == "message.txt") {
+                            continue;
+                        }
+
                         let relative_path = stashed_file_path.strip_prefix(&latest_stash_path)
                             .map_err(|e| OxenError::basic_str(format!("Error stripping prefix: {}", e)))?;
                         let working_dir_dest_path = repo.path.join(relative_path);
                         let metadata = fs::metadata(&stashed_file_path)?;
 
-                        if metadata.is_file() {
-                            if let Some(parent) = working_dir_dest_path.parent() {
-                                fs::create_dir_all(parent)?;
-                            }
-                            fs::copy(stashed_file_path, &working_dir_dest_path)?;
-                            println!("  Applied file: {}", relative_path.display());
-                        } else if metadata.is_dir() {
+                        if metadata.is_dir() {
+                            // Ensure directory exists in working dir, no conflict logic for dirs for now
                             fs::create_dir_all(&working_dir_dest_path)?;
                             println!("  Created directory: {}", relative_path.display());
+                            continue; // move to next stashed_file_path
+                        }
+
+                        // Logic for files
+                        if metadata.is_file() {
+                            let stashed_content = fs::read(&stashed_file_path)?;
+                            let local_content_opt = if working_dir_dest_path.exists() {
+                                Some(fs::read(&working_dir_dest_path)?)
+                            } else {
+                                None
+                            };
+
+                            match revisions::get_version_file_from_commit_id(&repo, &base_commit_id, relative_path) {
+                                Ok(base_version_actual_path) => {
+                                    // Case 2: File existed in base_commit_id
+                                    let base_content = fs::read(&base_version_actual_path)?;
+                                    let local_content = local_content_opt.unwrap_or_default();
+
+                                    let is_local_modified = local_content != base_content;
+                                    let is_stashed_modified = stashed_content != base_content;
+
+                                    if is_local_modified && is_stashed_modified && local_content != stashed_content {
+                                        conflicted_files.push(relative_path.to_path_buf());
+                                        println!("Conflict: File {} changed locally and in stash.", relative_path.display());
+                                    } else if is_stashed_modified {
+                                        if let Some(parent) = working_dir_dest_path.parent() {
+                                            fs::create_dir_all(parent)?;
+                                        }
+                                        fs::copy(&stashed_file_path, &working_dir_dest_path)?;
+                                        println!("  Applied file: {}", relative_path.display());
+                                    } // Else: local modified or neither modified, do nothing
+                                }
+                                Err(_) => {
+                                    // Case 1: File was new in the stash (not in base_commit_id)
+                                    if local_content_opt.is_some() {
+                                        // File created locally with the same name
+                                        conflicted_files.push(relative_path.to_path_buf());
+                                        println!("Conflict: File {} created locally and in stash.", relative_path.display());
+                                    } else {
+                                        // No local file, apply stashed new file
+                                        if let Some(parent) = working_dir_dest_path.parent() {
+                                            fs::create_dir_all(parent)?;
+                                        }
+                                        fs::copy(&stashed_file_path, &working_dir_dest_path)?;
+                                        println!("  Applied new file: {}", relative_path.display());
+                                    }
+                                }
+                            }
                         }
                     }
 
-                    // After successfully copying all files, remove the stash directory
-                    fs::remove_dir_all(&latest_stash_path)?;
-                    println!("\nApplied and removed stash: {}", latest_stash_name);
+                    if conflicted_files.is_empty() {
+                        println!("Successfully popped stash: {}", latest_stash_name);
+                        fs::remove_dir_all(&latest_stash_path)?;
+                    } else {
+                        println!("Stash operation completed with conflicts in the following files:");
+                        for path in conflicted_files {
+                            println!("  - {}", path.display());
+                        }
+                        println!("Stash '{}' was not removed due to conflicts.", latest_stash_name);
+                    }
                 } else {
                     println!("No stashes to pop.");
                 }
@@ -207,28 +270,97 @@ impl RunCmd for StashCmd {
 
                 if let Some(latest_stash_name) = stash_dirs.last() {
                     let latest_stash_path = stash_base_dir.join(latest_stash_name);
-                    println!("Applying stash: {}", latest_stash_name);
+                    let message_file_path = latest_stash_path.join("message.txt");
+                    match fs::read_to_string(&message_file_path) {
+                        Ok(content) => {
+                            println!("Applying stash: {} - {}", latest_stash_name, content.trim());
+                        }
+                        Err(_) => {
+                            println!("Applying stash: {}", latest_stash_name);
+                        }
+                    }
+
+                    let mut conflicted_files: Vec<std::path::PathBuf> = Vec::new();
+                    let base_commit_id = fs::read_to_string(latest_stash_path.join("head_commit.txt"))
+                        .map_err(|e| OxenError::basic_str(format!("Failed to read base_commit_id for stash: {}",e)))?
+                        .trim().to_string();
 
                     let stashed_files = util::fs::rlist_paths_in_dir(&latest_stash_path);
                     for stashed_file_path in stashed_files.iter() {
+                         // Skip meta files like head_commit.txt and message.txt
+                        if stashed_file_path.file_name().map_or(false, |name| name == "head_commit.txt" || name == "message.txt") {
+                            continue;
+                        }
+
                         let relative_path = stashed_file_path.strip_prefix(&latest_stash_path)
                             .map_err(|e| OxenError::basic_str(format!("Error stripping prefix: {}", e)))?;
                         let working_dir_dest_path = repo.path.join(relative_path);
                         let metadata = fs::metadata(&stashed_file_path)?;
 
-                        if metadata.is_file() {
-                            if let Some(parent) = working_dir_dest_path.parent() {
-                                fs::create_dir_all(parent)?;
-                            }
-                            fs::copy(stashed_file_path, &working_dir_dest_path)?;
-                            println!("  Applied file: {}", relative_path.display());
-                        } else if metadata.is_dir() {
+                        if metadata.is_dir() {
+                            // Ensure directory exists in working dir, no conflict logic for dirs for now
                             fs::create_dir_all(&working_dir_dest_path)?;
                             println!("  Created directory: {}", relative_path.display());
+                            continue; // move to next stashed_file_path
+                        }
+
+                        // Logic for files
+                        if metadata.is_file() {
+                            let stashed_content = fs::read(&stashed_file_path)?;
+                            let local_content_opt = if working_dir_dest_path.exists() {
+                                Some(fs::read(&working_dir_dest_path)?)
+                            } else {
+                                None
+                            };
+
+                            match revisions::get_version_file_from_commit_id(&repo, &base_commit_id, relative_path) {
+                                Ok(base_version_actual_path) => {
+                                    // Case 2: File existed in base_commit_id
+                                    let base_content = fs::read(&base_version_actual_path)?;
+                                    let local_content = local_content_opt.unwrap_or_default();
+
+                                    let is_local_modified = local_content != base_content;
+                                    let is_stashed_modified = stashed_content != base_content;
+
+                                    if is_local_modified && is_stashed_modified && local_content != stashed_content {
+                                        conflicted_files.push(relative_path.to_path_buf());
+                                        println!("Conflict: File {} changed locally and in stash.", relative_path.display());
+                                    } else if is_stashed_modified {
+                                        if let Some(parent) = working_dir_dest_path.parent() {
+                                            fs::create_dir_all(parent)?;
+                                        }
+                                        fs::copy(&stashed_file_path, &working_dir_dest_path)?;
+                                        println!("  Applied file: {}", relative_path.display());
+                                    } // Else: local modified or neither modified, do nothing
+                                }
+                                Err(_) => {
+                                    // Case 1: File was new in the stash (not in base_commit_id)
+                                    if local_content_opt.is_some() {
+                                        // File created locally with the same name
+                                        conflicted_files.push(relative_path.to_path_buf());
+                                        println!("Conflict: File {} created locally and in stash.", relative_path.display());
+                                    } else {
+                                        // No local file, apply stashed new file
+                                        if let Some(parent) = working_dir_dest_path.parent() {
+                                            fs::create_dir_all(parent)?;
+                                        }
+                                        fs::copy(&stashed_file_path, &working_dir_dest_path)?;
+                                        println!("  Applied new file: {}", relative_path.display());
+                                    }
+                                }
+                            }
                         }
                     }
-                    // DO NOT remove the stash directory for 'apply'
-                    println!("\nApplied stash: {}", latest_stash_name);
+
+                    if conflicted_files.is_empty() {
+                        println!("Successfully applied stash: {}", latest_stash_name);
+                    } else {
+                        println!("Stash operation completed with conflicts in the following files:");
+                        for path in conflicted_files {
+                            println!("  - {}", path.display());
+                        }
+                        // Apply does not remove the stash, so no additional message needed here for conflicts.
+                    }
                 } else {
                     println!("No stashes to apply.");
                 }
