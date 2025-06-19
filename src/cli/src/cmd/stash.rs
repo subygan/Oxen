@@ -211,6 +211,12 @@ impl RunCmd for StashCmd {
                                             // True Conflict
                                             println!("Conflict: File {} changed locally and in stash. Keeping local version.", relative_path.display());
                                             conflicted_files.push(relative_path.to_path_buf());
+                                            // Add these lines:
+                                            println!("  Your local changes for '{}' have been kept.", relative_path.display());
+                                            println!("  To view the stashed version, inspect: .oxen/stash/{}/{}", latest_stash_name, relative_path.display());
+                                            println!("  To view the base version (from when you stashed), you can use: oxen checkout {} -- '{}'", base_commit_id, relative_path.display());
+                                            println!("  Consider using 'oxen stash apply_file {} {}' to apply the stashed version for this file if desired.", latest_stash_name, relative_path.display());
+                                            println!("  (Note: 'oxen stash apply_file' and 'oxen stash drop' might be future commands for finer control).");
                                         } else {
                                             // Convergent Edit
                                             println!("Applied convergent edit for file: {}", relative_path.display());
@@ -348,6 +354,12 @@ impl RunCmd for StashCmd {
                                             // True Conflict
                                             println!("Conflict: File {} changed locally and in stash. Keeping local version.", relative_path.display());
                                             conflicted_files.push(relative_path.to_path_buf());
+                                            // Add these lines:
+                                            println!("  Your local changes for '{}' have been kept.", relative_path.display());
+                                            println!("  To view the stashed version, inspect: .oxen/stash/{}/{}", latest_stash_name, relative_path.display());
+                                            println!("  To view the base version (from when you stashed), you can use: oxen checkout {} -- '{}'", base_commit_id, relative_path.display());
+                                            println!("  Consider using 'oxen stash apply_file {} {}' to apply the stashed version for this file if desired.", latest_stash_name, relative_path.display());
+                                            println!("  (Note: 'oxen stash apply_file' and 'oxen stash drop' might be future commands for finer control).");
                                         } else {
                                             // Convergent Edit
                                             println!("Applied convergent edit for file: {}", relative_path.display());

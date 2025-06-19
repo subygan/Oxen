@@ -231,7 +231,13 @@ describe "oxen stash" do
       expect(output).to include("Stash operation completed with conflicts")
       expect(output).to include(@conflict_file)
       # Check for the specific conflict message for this case
-      expect(output).to include("File #{@conflict_file} changed locally and in stash. Keeping local version.")
+      expect(output).to include("Conflict: File #{@conflict_file} changed locally and in stash. Keeping local version.")
+      # Add new checks for the detailed guidance messages
+      expect(output).to include("Your local changes for '#{@conflict_file}' have been kept.")
+      expect(output).to include(Regexp.new(Regexp.escape("To view the stashed version, inspect: .oxen/stash/stash_") + "\d+" + Regexp.escape("/#{@conflict_file}")))
+      expect(output).to include(Regexp.new(Regexp.escape("To view the base version (from when you stashed), you can use: oxen checkout ") + "\w{64}" + Regexp.escape(" -- '#{@conflict_file}'")))
+      expect(output).to include(Regexp.new(Regexp.escape("Consider using 'oxen stash apply_file stash_") + "\d+" + Regexp.escape(" #{@conflict_file}'")))
+      expect(output).to include("(Note: 'oxen stash apply_file' and 'oxen stash drop' might be future commands for finer control).")
       expect(output).to include("was not removed due to conflicts")
 
       # Check file content remains local
@@ -352,7 +358,12 @@ describe "oxen stash" do
       output = run_oxen_cmd("stash pop")
       expect(output).to include("Stash operation completed with conflicts")
       expect(output).to include(new_filename)
-      expect(output).to include("File #{new_filename} created locally and in stash")
+      # Verify the specific message for new file conflicts
+      expect(output).to include("Conflict: File #{new_filename} created locally and in stash.")
+      # Ensure the detailed guidance messages for base/stashed versions are NOT present for this type of conflict
+      expect(output).not_to include("Your local changes for '#{new_filename}' have been kept.")
+      expect(output).not_to include(Regexp.new(Regexp.escape("To view the stashed version, inspect: .oxen/stash/stash_")))
+      expect(output).not_to include(Regexp.new(Regexp.escape("To view the base version (from when you stashed), you can use: oxen checkout ")))
       expect(output).to include("was not removed due to conflicts")
 
       # Local file should remain untouched
