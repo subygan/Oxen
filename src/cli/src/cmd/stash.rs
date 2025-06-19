@@ -197,30 +197,47 @@ impl RunCmd for StashCmd {
                                 Ok(base_version_actual_path) => {
                                     // Case 2: File existed in base_commit_id
                                     let base_content = fs::read(&base_version_actual_path)?;
-                                    let local_content = local_content_opt.unwrap_or_default();
+                                    let local_content = if working_dir_dest_path.exists() {
+                                        std::fs::read(&working_dir_dest_path)?
+                                    } else {
+                                        Vec::new() // Treat as empty if not existent or deleted
+                                    };
 
                                     let is_local_modified = local_content != base_content;
                                     let is_stashed_modified = stashed_content != base_content;
 
-                                    if is_local_modified && is_stashed_modified && local_content != stashed_content {
-                                        conflicted_files.push(relative_path.to_path_buf());
-                                        println!("Conflict: File {} changed locally and in stash.", relative_path.display());
-                                    } else if is_stashed_modified {
-                                        if let Some(parent) = working_dir_dest_path.parent() {
-                                            fs::create_dir_all(parent)?;
+                                    if is_local_modified && is_stashed_modified {
+                                        if local_content != stashed_content {
+                                            // True Conflict
+                                            println!("Conflict: File {} changed locally and in stash. Keeping local version.", relative_path.display());
+                                            conflicted_files.push(relative_path.to_path_buf());
+                                        } else {
+                                            // Convergent Edit
+                                            println!("Applied convergent edit for file: {}", relative_path.display());
+                                            if let Some(parent) = working_dir_dest_path.parent() {
+                                                std::fs::create_dir_all(parent)?;
+                                            }
+                                            std::fs::copy(&stashed_file_path, &working_dir_dest_path)?;
                                         }
-                                        fs::copy(&stashed_file_path, &working_dir_dest_path)?;
-                                        println!("  Applied file: {}", relative_path.display());
-                                    } // Else: local modified or neither modified, do nothing
+                                    } else if is_stashed_modified {
+                                        println!("Applied stashed changes to file: {}", relative_path.display());
+                                        if let Some(parent) = working_dir_dest_path.parent() {
+                                            std::fs::create_dir_all(parent)?;
+                                        }
+                                        std::fs::copy(&stashed_file_path, &working_dir_dest_path)?;
+                                    } else if is_local_modified {
+                                        println!("Kept local changes for file: {}", relative_path.display());
+                                    } else {
+                                        println!("File {} is already consistent.", relative_path.display());
+                                    }
                                 }
                                 Err(_) => {
                                     // Case 1: File was new in the stash (not in base_commit_id)
+                                    // This logic remains unchanged from the previous step
                                     if local_content_opt.is_some() {
-                                        // File created locally with the same name
                                         conflicted_files.push(relative_path.to_path_buf());
                                         println!("Conflict: File {} created locally and in stash.", relative_path.display());
                                     } else {
-                                        // No local file, apply stashed new file
                                         if let Some(parent) = working_dir_dest_path.parent() {
                                             fs::create_dir_all(parent)?;
                                         }
@@ -317,30 +334,47 @@ impl RunCmd for StashCmd {
                                 Ok(base_version_actual_path) => {
                                     // Case 2: File existed in base_commit_id
                                     let base_content = fs::read(&base_version_actual_path)?;
-                                    let local_content = local_content_opt.unwrap_or_default();
+                                    let local_content = if working_dir_dest_path.exists() {
+                                        std::fs::read(&working_dir_dest_path)?
+                                    } else {
+                                        Vec::new() // Treat as empty if not existent or deleted
+                                    };
 
                                     let is_local_modified = local_content != base_content;
                                     let is_stashed_modified = stashed_content != base_content;
 
-                                    if is_local_modified && is_stashed_modified && local_content != stashed_content {
-                                        conflicted_files.push(relative_path.to_path_buf());
-                                        println!("Conflict: File {} changed locally and in stash.", relative_path.display());
-                                    } else if is_stashed_modified {
-                                        if let Some(parent) = working_dir_dest_path.parent() {
-                                            fs::create_dir_all(parent)?;
+                                    if is_local_modified && is_stashed_modified {
+                                        if local_content != stashed_content {
+                                            // True Conflict
+                                            println!("Conflict: File {} changed locally and in stash. Keeping local version.", relative_path.display());
+                                            conflicted_files.push(relative_path.to_path_buf());
+                                        } else {
+                                            // Convergent Edit
+                                            println!("Applied convergent edit for file: {}", relative_path.display());
+                                            if let Some(parent) = working_dir_dest_path.parent() {
+                                                std::fs::create_dir_all(parent)?;
+                                            }
+                                            std::fs::copy(&stashed_file_path, &working_dir_dest_path)?;
                                         }
-                                        fs::copy(&stashed_file_path, &working_dir_dest_path)?;
-                                        println!("  Applied file: {}", relative_path.display());
-                                    } // Else: local modified or neither modified, do nothing
+                                    } else if is_stashed_modified {
+                                        println!("Applied stashed changes to file: {}", relative_path.display());
+                                        if let Some(parent) = working_dir_dest_path.parent() {
+                                            std::fs::create_dir_all(parent)?;
+                                        }
+                                        std::fs::copy(&stashed_file_path, &working_dir_dest_path)?;
+                                    } else if is_local_modified {
+                                        println!("Kept local changes for file: {}", relative_path.display());
+                                    } else {
+                                        println!("File {} is already consistent.", relative_path.display());
+                                    }
                                 }
                                 Err(_) => {
                                     // Case 1: File was new in the stash (not in base_commit_id)
+                                    // This logic remains unchanged from the previous step
                                     if local_content_opt.is_some() {
-                                        // File created locally with the same name
                                         conflicted_files.push(relative_path.to_path_buf());
                                         println!("Conflict: File {} created locally and in stash.", relative_path.display());
                                     } else {
-                                        // No local file, apply stashed new file
                                         if let Some(parent) = working_dir_dest_path.parent() {
                                             fs::create_dir_all(parent)?;
                                         }

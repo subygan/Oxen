@@ -230,6 +230,8 @@ describe "oxen stash" do
       output = run_oxen_cmd("stash pop")
       expect(output).to include("Stash operation completed with conflicts")
       expect(output).to include(@conflict_file)
+      # Check for the specific conflict message for this case
+      expect(output).to include("File #{@conflict_file} changed locally and in stash. Keeping local version.")
       expect(output).to include("was not removed due to conflicts")
 
       # Check file content remains local
@@ -260,8 +262,9 @@ describe "oxen stash" do
 
       # 3. Pop: Should apply dummy.txt, keep local changes to @conflict_file
       output = run_oxen_cmd("stash pop")
-      expect(output).not_to include("Conflict") # Or check for "Successfully popped"
+      expect(output).not_to include("Conflict")
       expect(output).to include("Successfully popped stash")
+      expect(output).to include("Kept local changes for file: #{@conflict_file}")
 
 
       expect(File.read(@conflict_file)).to eq("local only change\nline2\nline3")
@@ -284,10 +287,54 @@ describe "oxen stash" do
       output = run_oxen_cmd("stash pop")
       expect(output).not_to include("Conflict")
       expect(output).to include("Successfully popped stash")
+      expect(output).to include("Applied stashed changes to file: #{@conflict_file}")
+
 
       expect(File.read(@conflict_file)).to eq("stashed version for apply\nline2\nline3")
       list_output = run_oxen_cmd("stash list")
       expect(list_output).to include("No stashes available")
+    end
+
+    it "should apply stashed changes if local was deleted (stashed modified, local deleted)" do
+      # 1. Modify and stash
+      File.write(@conflict_file, "stashed content for deleted local\nline2")
+      run_oxen_cmd("stash push -m \"local-deleted-stash\"")
+      expect(File.read(@conflict_file)).to eq("base content\nline2\nline3") # Reverted
+
+      # 2. Delete the file locally
+      FileUtils.rm(@conflict_file)
+      expect(File.exist?(@conflict_file)).to be_falsey
+
+      # 3. Pop: Stashed version should be applied as there's no local version to conflict
+      output = run_oxen_cmd("stash pop")
+      expect(output).not_to include("Conflict")
+      expect(output).to include("Successfully popped stash")
+      expect(output).to include("Applied stashed changes to file: #{@conflict_file}")
+
+
+      expect(File.exist?(@conflict_file)).to be_truthy
+      expect(File.read(@conflict_file)).to eq("stashed content for deleted local\nline2")
+      expect(run_oxen_cmd("stash list")).to include("No stashes available")
+    end
+
+    it "should handle convergent edits (local and stashed same, different from base)" do
+      # 1. Modify and stash
+      File.write(@conflict_file, "convergent change\nline2\nline3")
+      run_oxen_cmd("stash push -m \"convergent-stash\"")
+      # @conflict_file is now reverted to "base content..."
+
+      # 2. Make the same modification locally
+      File.write(@conflict_file, "convergent change\nline2\nline3")
+
+      # 3. Pop: Should be no conflict, stash applied (or effectively no change)
+      output = run_oxen_cmd("stash pop")
+      expect(output).not_to include("Conflict")
+      expect(output).to include("Successfully popped stash")
+      expect(output).to include("Applied convergent edit for file: #{@conflict_file}")
+
+
+      expect(File.read(@conflict_file)).to eq("convergent change\nline2\nline3")
+      expect(run_oxen_cmd("stash list")).to include("No stashes available")
     end
 
     it "should conflict if new file in stash and new file locally with same name" do
