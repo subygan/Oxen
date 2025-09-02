@@ -99,6 +99,9 @@ pub use save::SaveCmd;
 pub mod schemas;
 pub use schemas::SchemasCmd;
 
+pub mod stash;
+pub use stash::StashCmd;
+
 pub mod tree;
 pub use tree::TreeCmd;
 

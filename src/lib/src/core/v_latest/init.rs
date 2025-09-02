@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use crate::constants::STASH_DIR;
 use crate::core::versions::MinOxenVersion;
 use crate::error::OxenError;
 use crate::model::LocalRepository;
@@ -28,7 +29,8 @@ pub fn init_with_version(
 ) -> Result<LocalRepository, OxenError> {
     let hidden_dir = util::fs::oxen_hidden_dir(path);
 
-    util::fs::create_dir_all(hidden_dir)?;
+    util::fs::create_dir_all(&hidden_dir)?;
+    util::fs::create_dir_all(hidden_dir.join(STASH_DIR))?;
     if util::fs::config_filepath(path).try_exists()? {
         let err = format!("Oxen repository already exists: {path:?}");
         return Err(OxenError::basic_str(err));
